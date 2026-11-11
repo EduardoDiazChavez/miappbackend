@@ -1,0 +1,128 @@
+openapi: 3.1.0
+info:
+  title: MiApp API
+  version: 0.1.0
+  description: Role-aware ticket, client and service-team API.
+servers:
+  - url: http://localhost:3001
+security:
+  - sessionCookie: []
+paths:
+  /health:
+    get:
+      security: []
+      responses:
+        "200":
+          description: API health
+  /auth/client/login:
+    post:
+      security: []
+      summary: Start a client session with invited account credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, format: email }
+                password: { type: string, minLength: 10, maxLength: 128 }
+      responses:
+        "200": { description: Client session created }
+        "401": { description: Invalid credentials }
+  /auth/google:
+    post:
+      security: []
+      summary: Verify Google ID token for a previously authorized internal account
+      responses:
+        "200": { description: Internal session created }
+        "403": { description: Account not authorized for internal access }
+  /auth/me:
+    get:
+      responses:
+        "200": { description: Current authenticated user }
+        "401": { description: No active session }
+  /auth/logout:
+    post:
+      responses:
+        "204": { description: Session cookie cleared }
+  /tickets:
+    get:
+      summary: List tickets, scoped to the client's organization when role is CLIENT
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: status
+          schema: { type: string, enum: [OPEN, IN_PROGRESS, WAITING, CLOSED] }
+      responses:
+        "200": { description: Paginated ticket list }
+        "401": { description: No active session }
+    post:
+      summary: Create a ticket (internal roles only)
+      responses:
+        "201": { description: Ticket created and initial history message recorded }
+        "403": { description: Client role cannot create tickets }
+  /tickets/{idOrCode}:
+    get:
+      summary: Get ticket and role-visible message history
+      parameters:
+        - in: path
+          name: idOrCode
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Ticket details }
+        "404": { description: Ticket not found or outside client organization }
+  /tickets/{idOrCode}/messages:
+    post:
+      summary: Add a client-visible ticket message
+      parameters:
+        - in: path
+          name: idOrCode
+          required: true
+          schema: { type: string }
+      responses:
+        "201": { description: Message saved }
+        "404": { description: Ticket not found or outside client organization }
+  /tickets/{idOrCode}/status:
+    patch:
+      summary: Change ticket status (internal roles only)
+      parameters:
+        - in: path
+          name: idOrCode
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Ticket updated and history message recorded }
+        "403": { description: Client role cannot change status }
+  /admin/organizations:
+    get:
+      summary: List organizations (ADMIN only)
+      responses:
+        "200": { description: Active organizations }
+    post:
+      summary: Create an organization (ADMIN only)
+      responses:
+        "201": { description: Organization created }
+  /admin/invitations/clients:
+    post:
+      summary: Create a one-time client invitation (ADMIN only)
+      responses:
+        "201": { description: Single-use invitation URL, expires after 72 hours }
+  /admin/users/internal:
+    post:
+      summary: Allowlist an internal user for Google sign-in (ADMIN only)
+      responses:
+        "201": { description: Internal account authorized }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: miapp_session
