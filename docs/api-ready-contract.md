@@ -19,7 +19,7 @@ Cada solicitud autenticada vuelve a consultar el usuario activo en MongoDB, de m
 
 - `POST /auth/client/login` — `{ "username": "cliente@empresa.com", "password": "..." }`. Solo permite cuentas `CLIENT` activas.
 - `POST /auth/client/accept-invitation` — `{ "token": "...", "password": "..." }`. Consume una invitación vigente una sola vez y establece la cookie.
-- `POST /auth/google` — `{ "credential": "<Google ID token>" }`. Valida el ID token en el servidor; solo permite correos habilitados. La primera autenticación verificada vincula el `sub` de Google.
+- `POST /auth/google` — `{ "credential": "<Google ID token>" }`. Valida el ID token en el servidor y solo permite correos verificados con dominio exacto `@mrm.com.ve`. Si el correo aún no tiene cuenta, crea una cuenta interna activa con rol `OPERATOR`; las cuentas internas existentes conservan su rol. Las cuentas preexistentes inactivas o no internas siguen bloqueadas.
 - `GET /auth/me` — perfil autenticado.
 - `POST /auth/logout` — elimina la cookie.
 

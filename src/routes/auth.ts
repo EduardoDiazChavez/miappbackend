@@ -6,6 +6,8 @@ import { OAuth2Client } from "google-auth-library";
 import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import { config } from "../config.js";
+import { isAllowedGoogleEmail } from "../domain/google-email.js";
+import { buildNewGoogleUser } from "../domain/google-user.js";
 import { internalRoles } from "../domain/roles.js";
 import { Invitation } from "../models/Invitation.js";
 import { User } from "../models/User.js";
@@ -115,17 +117,28 @@ authRouter.post("/google", loginLimiter, async (request, response) => {
     return;
   }
 
-  const user = await User.findOne({
-    email: payload.email.toLowerCase(),
-    role: { $in: internalRoles },
-    active: true,
-  }).select("+googleSubject");
+  const email = payload.email.trim().toLowerCase();
+  if (!isAllowedGoogleEmail(email)) {
+    response.status(403).json({ error: "Solo se permite iniciar sesión con correos @mrm.com.ve." });
+    return;
+  }
 
-  if (!user || (user.googleSubject && user.googleSubject !== payload.sub)) {
+  let user = await User.findOne({ email }).select("+googleSubject");
+
+  if (user && (!user.active || !internalRoles.includes(user.role))) {
     response.status(403).json({ error: "Esta cuenta de Google no tiene acceso interno habilitado." });
     return;
   }
-  if (!user.googleSubject) {
+
+  if (user?.googleSubject && user.googleSubject !== payload.sub) {
+    response.status(403).json({ error: "Esta cuenta de Google no tiene acceso interno habilitado." });
+    return;
+  }
+  if (!user) {
+    user = await User.create(
+      buildNewGoogleUser({ email, name: payload.name, subject: payload.sub }),
+    );
+  } else if (!user.googleSubject) {
     user.googleSubject = payload.sub;
     await user.save();
   }
