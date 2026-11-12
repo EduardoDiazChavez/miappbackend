@@ -1,5 +1,6 @@
 import mongoose, { type ConnectOptions } from "mongoose";
 import { config } from "./config.js";
+import { Ticket } from "./models/Ticket.js";
 
 const invalidTlsOptions = [
   "tlsinsecure",
@@ -97,6 +98,10 @@ export function createMongoConnectOptions(
 export async function connectToDatabase(): Promise<void> {
   const options = createMongoConnectOptions(config.MONGODB_URI, config.NODE_ENV);
   await mongoose.connect(config.MONGODB_URI, options);
+  await Ticket.collection.createIndex(
+    { organizationId: 1, isOpen: 1 },
+    { unique: true, partialFilterExpression: { isOpen: true } },
+  );
   console.info("MongoDB connection established.");
 }
 

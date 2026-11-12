@@ -11,7 +11,7 @@ import {
   canCreateOrganizationTickets,
   canCreateTickets,
 } from "../domain/permissions.js";
-import { createTicketCode } from "../domain/ticket-code.js";
+import { createTicketCode, getNextTicketSequence } from "../domain/ticket-code.js";
 
 export const ticketsRouter = Router();
 ticketsRouter.use(requireAuth);
@@ -27,12 +27,29 @@ const messageInputSchema = z.object({
 const statusInputSchema = z.object({
   status: z.enum(["OPEN", "IN_PROGRESS", "WAITING", "CLOSED"]),
 });
+const openTicketStatuses = ["OPEN", "IN_PROGRESS", "WAITING"] as const;
+const openTicketError = "Este cliente ya tiene un ticket abierto. Cierra el ticket actual antes de crear otro.";
+
+function findOpenTicket(organizationId: unknown, excludeTicketId?: unknown) {
+  return Ticket.findOne({
+    organizationId,
+    status: { $in: openTicketStatuses },
+    ...(excludeTicketId ? { _id: { $ne: excludeTicketId } } : {}),
+  })
+    .select("code title status")
+    .sort({ createdAt: -1 })
+    .lean();
+}
 
 function canAccessTicket(
   user: NonNullable<Express.Request["user"]>,
   organizationId: unknown,
 ) {
   return canAccessOrganization(user.role, user.organizationId, String(organizationId));
+}
+
+function isDuplicateKeyError(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === 11000;
 }
 
 ticketsRouter.get("/", async (request, response) => {
@@ -75,6 +92,40 @@ ticketsRouter.get("/", async (request, response) => {
     Ticket.countDocuments(query),
   ]);
   response.json({ tickets, page, limit, total });
+});
+
+ticketsRouter.get("/next-sequence", requireRoles(...internalRoles), async (request, response) => {
+  const organizationId = request.query.organizationId;
+  if (typeof organizationId !== "string" || !mongoose.Types.ObjectId.isValid(organizationId)) {
+    response.status(400).json({ error: "El cliente indicado no es válido." });
+    return;
+  }
+
+  const organization = await Organization.findById(organizationId)
+    .select("active allowTicketCreation archivedAt")
+    .lean();
+  if (!organization || !organization.active || organization.archivedAt) {
+    response.status(404).json({ error: "No se encontró el cliente seleccionado." });
+    return;
+  }
+  if (!canCreateOrganizationTickets(request.user!.role, organization.allowTicketCreation !== false)) {
+    response.status(403).json({ error: "No está permitido crear tickets para este cliente." });
+    return;
+  }
+
+  const [latestTicket, openTicket] = await Promise.all([
+    Ticket.findOne({ organizationId, code: /-\d+$/ })
+      .select("code")
+      .sort({ createdAt: -1 })
+      .lean(),
+    findOpenTicket(organizationId),
+  ]);
+  response.json({
+    nextSequence: getNextTicketSequence(latestTicket?.code),
+    openTicket: openTicket
+      ? { code: openTicket.code, title: openTicket.title, status: openTicket.status }
+      : null,
+  });
 });
 
 ticketsRouter.get("/organizations", async (request, response) => {
@@ -154,25 +205,63 @@ ticketsRouter.post("/", requireRoles(...internalRoles), async (request, response
     response.status(403).json({ error: "No está permitido crear tickets para este cliente." });
     return;
   }
-  const code = createTicketCode(
-    request.user!.name,
-    organization.code,
-    organization.name,
-    new Date(),
-  );
-  if (await Ticket.exists({ code })) {
+  const existingOpenTicket = await findOpenTicket(input.organizationId);
+  if (existingOpenTicket) {
     response.status(409).json({
-      error: "Ya existe un ticket para este usuario y cliente en la fecha de hoy.",
+      error: openTicketError,
+      openTicket: {
+        code: existingOpenTicket.code,
+        title: existingOpenTicket.title,
+        status: existingOpenTicket.status,
+      },
     });
     return;
   }
-  const ticket = await Ticket.create({
-    organizationId: input.organizationId,
-    title: input.process,
-    description: input.description,
-    code,
-    createdBy: request.user!.id,
-  });
+
+  const ticket = await (async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const latestTicket = await Ticket.findOne({
+        organizationId: input.organizationId,
+        code: /-\d+$/,
+      })
+        .select("code")
+        .sort({ createdAt: -1 })
+        .lean();
+      const code = createTicketCode(
+        request.user!.name,
+        organization.code,
+        organization.name,
+        new Date(),
+        getNextTicketSequence(latestTicket?.code),
+      );
+      try {
+        return await Ticket.create({
+          organizationId: input.organizationId,
+          title: input.process,
+          description: input.description,
+          code,
+          isOpen: true,
+          createdBy: request.user!.id,
+        });
+      } catch (error) {
+        if (!isDuplicateKeyError(error)) throw error;
+        if (await findOpenTicket(input.organizationId)) return null;
+      }
+    }
+    return null;
+  })();
+  if (!ticket) {
+    const openTicket = await findOpenTicket(input.organizationId);
+    response.status(409).json({
+      error: openTicket
+        ? openTicketError
+        : "No se pudo asignar un correlativo único. Intenta crear el ticket nuevamente.",
+      ...(openTicket
+        ? { openTicket: { code: openTicket.code, title: openTicket.title, status: openTicket.status } }
+        : {}),
+    });
+    return;
+  }
   const initialMessage = await TicketMessage.create({
     ticketId: ticket._id,
     authorId: request.user!.id,
@@ -251,14 +340,35 @@ ticketsRouter.patch(
     const ticketIdQuery = mongoose.Types.ObjectId.isValid(ticketId)
       ? { _id: ticketId }
       : { code: ticketId };
-    const ticket = await Ticket.findOneAndUpdate(
-      ticketIdQuery,
-      {
-        status: input.status,
-        closedAt: input.status === "CLOSED" ? new Date() : null,
-      },
-      { new: true, runValidators: true },
-    );
+    const currentTicket = await Ticket.findOne(ticketIdQuery).select("_id organizationId");
+    if (!currentTicket) {
+      response.status(404).json({ error: "No se encontró el ticket." });
+      return;
+    }
+    if (input.status !== "CLOSED") {
+      const openTicket = await findOpenTicket(currentTicket.organizationId, currentTicket._id);
+      if (openTicket) {
+        response.status(409).json({ error: openTicketError });
+        return;
+      }
+    }
+
+    let ticket;
+    try {
+      ticket = await Ticket.findOneAndUpdate(
+        ticketIdQuery,
+        {
+          status: input.status,
+          isOpen: input.status !== "CLOSED",
+          closedAt: input.status === "CLOSED" ? new Date() : null,
+        },
+        { new: true, runValidators: true },
+      );
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) throw error;
+      response.status(409).json({ error: openTicketError });
+      return;
+    }
     if (!ticket) {
       response.status(404).json({ error: "No se encontró el ticket." });
       return;

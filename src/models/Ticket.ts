@@ -7,6 +7,7 @@ const ticketSchema = new Schema(
     title: { type: String, required: true, trim: true, maxlength: 160 },
     description: { type: String, required: true, trim: true, maxlength: 5000 },
     status: { type: String, enum: ["OPEN", "IN_PROGRESS", "WAITING", "CLOSED"], default: "OPEN", index: true },
+    isOpen: { type: Boolean, required: true, default: true },
     assignedTo: { type: Schema.Types.ObjectId, ref: "User" },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     closedAt: { type: Date },
@@ -15,6 +16,10 @@ const ticketSchema = new Schema(
 );
 
 ticketSchema.index({ organizationId: 1, createdAt: -1 });
+ticketSchema.index(
+  { organizationId: 1, isOpen: 1 },
+  { unique: true, partialFilterExpression: { isOpen: true } },
+);
 
 export type TicketDocument = InferSchemaType<typeof ticketSchema>;
 export const Ticket = model("Ticket", ticketSchema);
