@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canAccessOrganization, canCreateTickets, canManageUsers } from "./permissions.js";
+import {
+  canAccessOrganization,
+  canCreateOrganizationTickets,
+  canCreateTickets,
+  canManageUsers,
+} from "./permissions.js";
 
 test("clients can only access tickets from their own organization", () => {
   assert.equal(canAccessOrganization("CLIENT", "org-1", "org-1"), true);
@@ -19,4 +24,10 @@ test("only internal roles can create tickets and only admins can manage users", 
   assert.equal(canCreateTickets("SUPERVISOR"), true);
   assert.equal(canManageUsers("ADMIN"), true);
   assert.equal(canManageUsers("OPERATOR"), false);
+});
+
+test("ticket creation can be disabled for one organization", () => {
+  assert.equal(canCreateOrganizationTickets("OPERATOR", false), false);
+  assert.equal(canCreateOrganizationTickets("SUPERVISOR", true), true);
+  assert.equal(canCreateOrganizationTickets("CLIENT", true), false);
 });

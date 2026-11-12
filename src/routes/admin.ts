@@ -12,7 +12,22 @@ import { User } from "../models/User.js";
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireRoles("ADMIN"));
 
-const organizationSchema = z.object({ name: z.string().trim().min(2).max(120) });
+const organizationCodeSchema = z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,8}$/);
+const organizationSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  code: organizationCodeSchema,
+});
+const organizationUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  code: organizationCodeSchema.optional(),
+  active: z.boolean().optional(),
+  allowTicketCreation: z.boolean().optional(),
+  archived: z.boolean().optional(),
+}).refine(
+  (input) => Object.keys(input).length > 0 &&
+    (input.archived === undefined || Object.keys(input).length === 1),
+  { message: "La operación de archivo debe enviarse por separado." },
+);
 const invitationSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.string().trim().email().max(254),
@@ -41,9 +56,11 @@ adminRouter.post("/users/internal", async (request, response) => {
 
 adminRouter.post("/organizations", async (request, response) => {
   const input = organizationSchema.parse(request.body);
-  const existing = await Organization.findOne({ name: input.name });
+  const existing = await Organization.findOne({
+    $or: [{ name: input.name }, { code: input.code }],
+  });
   if (existing) {
-    response.status(409).json({ error: "Ya existe una organización con ese nombre." });
+    response.status(409).json({ error: "Ya existe un cliente con ese nombre o esas siglas." });
     return;
   }
   const organization = await Organization.create(input);
@@ -51,12 +68,67 @@ adminRouter.post("/organizations", async (request, response) => {
 });
 
 adminRouter.get("/organizations", async (_request, response) => {
-  const organizations = await Organization.find({ active: true }).sort({ name: 1 }).lean();
+  const organizations = await Organization.find().sort({ name: 1 }).lean();
   response.json({
     organizations: organizations.map((organization) => ({
       id: String(organization._id),
       name: organization.name,
+      code: organization.code ?? "",
+      active: organization.active,
+      allowTicketCreation: organization.allowTicketCreation !== false,
+      archived: Boolean(organization.archivedAt),
     })),
+  });
+});
+
+adminRouter.patch("/organizations/:organizationId", async (request, response) => {
+  const organizationId = request.params.organizationId;
+  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
+    response.status(400).json({ error: "El cliente indicado no es válido." });
+    return;
+  }
+
+  const input = organizationUpdateSchema.parse(request.body);
+  const duplicateValues = [
+    ...(input.name ? [{ name: input.name }] : []),
+    ...(input.code ? [{ code: input.code }] : []),
+  ];
+  if (duplicateValues.length > 0) {
+    const duplicate = await Organization.findOne({
+      _id: { $ne: organizationId },
+      $or: duplicateValues,
+    });
+    if (duplicate) {
+      response.status(409).json({ error: "Ya existe un cliente con ese nombre o esas siglas." });
+      return;
+    }
+  }
+
+  const { archived, ...fields } = input;
+  const update = archived === true
+    ? { active: false, allowTicketCreation: false, archivedAt: new Date() }
+    : archived === false
+      ? { archivedAt: null }
+      : fields;
+  const organization = await Organization.findByIdAndUpdate(
+    organizationId,
+    { $set: update },
+    { new: true, runValidators: true },
+  ).lean();
+
+  if (!organization) {
+    response.status(404).json({ error: "No se encontró el cliente." });
+    return;
+  }
+  response.json({
+    organization: {
+      id: String(organization._id),
+      name: organization.name,
+      code: organization.code ?? "",
+      active: organization.active,
+      allowTicketCreation: organization.allowTicketCreation !== false,
+      archived: Boolean(organization.archivedAt),
+    },
   });
 });
 
@@ -65,6 +137,7 @@ adminRouter.post("/invitations/clients", async (request, response) => {
   const organization = await Organization.findOne({
     _id: input.organizationId,
     active: true,
+    archivedAt: null,
   });
   if (!organization) {
     response.status(404).json({ error: "No se encontró la organización." });

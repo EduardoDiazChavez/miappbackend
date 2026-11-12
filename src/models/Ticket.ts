@@ -6,8 +6,6 @@ const ticketSchema = new Schema(
     organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
     title: { type: String, required: true, trim: true, maxlength: 160 },
     description: { type: String, required: true, trim: true, maxlength: 5000 },
-    area: { type: String, required: true, trim: true, maxlength: 100 },
-    priority: { type: String, enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"], default: "MEDIUM" },
     status: { type: String, enum: ["OPEN", "IN_PROGRESS", "WAITING", "CLOSED"], default: "OPEN", index: true },
     assignedTo: { type: Schema.Types.ObjectId, ref: "User" },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },

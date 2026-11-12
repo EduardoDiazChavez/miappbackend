@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { z } from "zod";
 import { requireAuth, requireRoles } from "../middleware/auth.js";
@@ -7,17 +6,20 @@ import { Ticket } from "../models/Ticket.js";
 import { TicketMessage } from "../models/TicketMessage.js";
 import { Organization } from "../models/Organization.js";
 import { internalRoles } from "../domain/roles.js";
-import { canAccessOrganization, canCreateTickets } from "../domain/permissions.js";
+import {
+  canAccessOrganization,
+  canCreateOrganizationTickets,
+  canCreateTickets,
+} from "../domain/permissions.js";
+import { createTicketCode } from "../domain/ticket-code.js";
 
 export const ticketsRouter = Router();
 ticketsRouter.use(requireAuth);
 
 const ticketInputSchema = z.object({
   organizationId: z.string().refine(mongoose.Types.ObjectId.isValid),
-  title: z.string().trim().min(3).max(160),
+  process: z.string().trim().min(3).max(160),
   description: z.string().trim().min(5).max(5000),
-  area: z.string().trim().min(2).max(100),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
 });
 const messageInputSchema = z.object({
   content: z.string().trim().min(1).max(2000),
@@ -78,13 +80,14 @@ ticketsRouter.get("/", async (request, response) => {
 ticketsRouter.get("/organizations", async (request, response) => {
   const query =
     request.user!.role === "CLIENT"
-      ? { _id: request.user!.organizationId, active: true }
-      : { active: true };
+      ? { _id: request.user!.organizationId, active: true, archivedAt: null }
+      : { active: true, archivedAt: null, allowTicketCreation: { $ne: false } };
   const organizations = await Organization.find(query).sort({ name: 1 }).lean();
   response.json({
     organizations: organizations.map((organization) => ({
       id: String(organization._id),
       name: organization.name,
+      code: organization.code ?? "",
     })),
   });
 });
@@ -140,9 +143,34 @@ ticketsRouter.get("/summary", requireRoles(...internalRoles), async (_request, r
 
 ticketsRouter.post("/", requireRoles(...internalRoles), async (request, response) => {
   const input = ticketInputSchema.parse(request.body);
+  const organization = await Organization.findById(input.organizationId)
+    .select("name code active allowTicketCreation archivedAt")
+    .lean();
+  if (!organization || !organization.active || organization.archivedAt) {
+    response.status(404).json({ error: "No se encontró el cliente seleccionado." });
+    return;
+  }
+  if (!canCreateOrganizationTickets(request.user!.role, organization.allowTicketCreation !== false)) {
+    response.status(403).json({ error: "No está permitido crear tickets para este cliente." });
+    return;
+  }
+  const code = createTicketCode(
+    request.user!.name,
+    organization.code,
+    organization.name,
+    new Date(),
+  );
+  if (await Ticket.exists({ code })) {
+    response.status(409).json({
+      error: "Ya existe un ticket para este usuario y cliente en la fecha de hoy.",
+    });
+    return;
+  }
   const ticket = await Ticket.create({
-    ...input,
-    code: `TK-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`,
+    organizationId: input.organizationId,
+    title: input.process,
+    description: input.description,
+    code,
     createdBy: request.user!.id,
   });
   const initialMessage = await TicketMessage.create({

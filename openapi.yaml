@@ -64,10 +64,16 @@ paths:
         "200": { description: Paginated ticket list }
         "401": { description: No active session }
     post:
-      summary: Create a ticket (internal roles only)
+      summary: Create a ticket for an enabled organization (internal roles only)
       responses:
         "201": { description: Ticket created and initial history message recorded }
-        "403": { description: Client role cannot create tickets }
+        "403": { description: Client role cannot create tickets, or organization ticket creation is disabled }
+  /tickets/organizations:
+    get:
+      summary: List active organizations where ticket creation is enabled, including ticket-code initials
+      responses:
+        "200": { description: Available organizations }
+        "401": { description: No active session }
   /tickets/{idOrCode}:
     get:
       summary: Get ticket and role-visible message history
@@ -103,13 +109,47 @@ paths:
         "403": { description: Client role cannot change status }
   /admin/organizations:
     get:
-      summary: List organizations (ADMIN only)
+      summary: List active, blocked and archived organizations (ADMIN only)
       responses:
-        "200": { description: Active organizations }
+        "200": { description: Organizations with initials, access and ticket-creation settings }
     post:
-      summary: Create an organization (ADMIN only)
+      summary: Create a client organization with unique ticket-code initials (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, code]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 120 }
+                code: { type: string, pattern: "^[A-Z0-9]{2,8}$" }
       responses:
         "201": { description: Organization created }
+        "409": { description: Name or initials already in use }
+  /admin/organizations/{organizationId}:
+    patch:
+      summary: Edit, block, archive or restore a client organization (ADMIN only)
+      parameters:
+        - in: path
+          name: organizationId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 2, maxLength: 120 }
+                code: { type: string, pattern: "^[A-Z0-9]{2,8}$" }
+                active: { type: boolean }
+                allowTicketCreation: { type: boolean }
+                archived: { type: boolean, description: "Archiving blocks access and ticket creation while preserving history." }
+      responses:
+        "200": { description: Organization updated }
+        "404": { description: Organization not found }
   /admin/invitations/clients:
     post:
       summary: Create a one-time client invitation (ADMIN only)

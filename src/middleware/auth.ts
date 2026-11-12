@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { config } from "../config.js";
 import type { AuthenticatedUser, Role } from "../domain/roles.js";
 import { User } from "../models/User.js";
+import { Organization } from "../models/Organization.js";
 
 declare global {
   // Express request types require namespace merging for application properties.
@@ -44,6 +45,24 @@ export async function requireAuth(request: Request, response: Response, next: Ne
 
     const user = await User.findOne({ _id: payload.sub, active: true });
     if (!user) {
+      response.clearCookie("miapp_session", {
+        httpOnly: true,
+        secure: config.COOKIE_SECURE,
+        sameSite: config.COOKIE_SAME_SITE,
+        path: "/",
+      });
+      response.status(401).json({ error: "La cuenta ya no está activa." });
+      return;
+    }
+
+    if (
+      user.role === "CLIENT" &&
+      !(await Organization.exists({
+        _id: user.organizationId,
+        active: true,
+        archivedAt: null,
+      }))
+    ) {
       response.clearCookie("miapp_session", {
         httpOnly: true,
         secure: config.COOKIE_SECURE,

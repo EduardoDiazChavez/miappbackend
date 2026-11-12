@@ -10,6 +10,7 @@ import { isAllowedGoogleEmail } from "../domain/google-email.js";
 import { buildNewGoogleUser } from "../domain/google-user.js";
 import { internalRoles } from "../domain/roles.js";
 import { Invitation } from "../models/Invitation.js";
+import { Organization } from "../models/Organization.js";
 import { User } from "../models/User.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -91,6 +92,16 @@ authRouter.post("/client/login", loginLimiter, async (request, response) => {
     return;
   }
 
+  const organization = await Organization.exists({
+    _id: user.organizationId,
+    active: true,
+    archivedAt: null,
+  });
+  if (!organization) {
+    response.status(403).json({ error: "El acceso de este cliente está bloqueado." });
+    return;
+  }
+
   setSessionCookie(response, {
     id: String(user._id),
     email: user.email,
@@ -165,6 +176,16 @@ authRouter.post("/client/accept-invitation", loginLimiter, async (request, respo
 
   if (!existingInvitation) {
     response.status(400).json({ error: "La invitación expiró o ya no es válida." });
+    return;
+  }
+
+  const organization = await Organization.exists({
+    _id: existingInvitation.organizationId,
+    active: true,
+    archivedAt: null,
+  });
+  if (!organization) {
+    response.status(403).json({ error: "La organización no está disponible." });
     return;
   }
 
