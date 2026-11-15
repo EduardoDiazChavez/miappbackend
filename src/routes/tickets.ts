@@ -7,9 +7,8 @@ import { TicketMessage } from "../models/TicketMessage.js";
 import { Organization } from "../models/Organization.js";
 import { internalRoles } from "../domain/roles.js";
 import {
-  canAccessOrganization,
+  canAccessTicket,
   canCreateOrganizationTickets,
-  canCreateTickets,
 } from "../domain/permissions.js";
 import { createTicketCode, getNextTicketSequence } from "../domain/ticket-code.js";
 
@@ -41,13 +40,6 @@ function findOpenTicket(organizationId: unknown, excludeTicketId?: unknown) {
     .lean();
 }
 
-function canAccessTicket(
-  user: NonNullable<Express.Request["user"]>,
-  organizationId: unknown,
-) {
-  return canAccessOrganization(user.role, user.organizationId, String(organizationId));
-}
-
 function isDuplicateKeyError(error: unknown) {
   return typeof error === "object" && error !== null && "code" in error && error.code === 11000;
 }
@@ -56,18 +48,21 @@ ticketsRouter.get("/", async (request, response) => {
   const user = request.user!;
   const query: Record<string, unknown> = {};
 
-  if (!canCreateTickets(user.role)) {
+  if (user.role === "CLIENT") {
     if (!user.organizationId) {
       response.json({ tickets: [] });
       return;
     }
     query.organizationId = user.organizationId;
-  } else if (typeof request.query.organizationId === "string") {
-    if (!mongoose.Types.ObjectId.isValid(request.query.organizationId)) {
-      response.status(400).json({ error: "El cliente indicado no es válido." });
-      return;
+  } else {
+    query.createdBy = user.id;
+    if (typeof request.query.organizationId === "string") {
+      if (!mongoose.Types.ObjectId.isValid(request.query.organizationId)) {
+        response.status(400).json({ error: "El cliente indicado no es válido." });
+        return;
+      }
+      query.organizationId = request.query.organizationId;
     }
-    query.organizationId = request.query.organizationId;
   }
 
   if (typeof request.query.status === "string") {
@@ -143,22 +138,24 @@ ticketsRouter.get("/organizations", async (request, response) => {
   });
 });
 
-ticketsRouter.get("/summary", requireRoles(...internalRoles), async (_request, response) => {
+ticketsRouter.get("/summary", requireRoles(...internalRoles), async (request, response) => {
+  const ticketScope = { createdBy: new mongoose.Types.ObjectId(request.user!.id) };
   const now = new Date();
   const firstMonth = new Date(now.getFullYear(), now.getMonth() - 5, 1);
   const [total, active, closed, organizations, groupedByOrganization, monthlyCounts] =
     await Promise.all([
-      Ticket.countDocuments(),
-      Ticket.countDocuments({ status: { $in: ["OPEN", "IN_PROGRESS", "WAITING"] } }),
-      Ticket.countDocuments({ status: "CLOSED" }),
+      Ticket.countDocuments(ticketScope),
+      Ticket.countDocuments({ ...ticketScope, status: { $in: ["OPEN", "IN_PROGRESS", "WAITING"] } }),
+      Ticket.countDocuments({ ...ticketScope, status: "CLOSED" }),
       Organization.countDocuments({ active: true }),
       Ticket.aggregate([
+        { $match: ticketScope },
         { $group: { _id: "$organizationId", tickets: { $sum: 1 } } },
         { $sort: { tickets: -1 } },
         { $limit: 8 },
       ]),
       Ticket.aggregate([
-        { $match: { createdAt: { $gte: firstMonth } } },
+        { $match: { ...ticketScope, createdAt: { $gte: firstMonth } } },
         {
           $group: {
             _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
@@ -284,7 +281,16 @@ ticketsRouter.get("/:ticketId", async (request, response) => {
   const ticket = mongoose.Types.ObjectId.isValid(ticketId)
     ? await Ticket.findById(ticketId).lean()
     : await Ticket.findOne({ code: ticketId }).lean();
-  if (!ticket || !canAccessTicket(request.user!, ticket.organizationId)) {
+  if (
+    !ticket ||
+    !canAccessTicket(
+      request.user!.role,
+      request.user!.id,
+      String(ticket.createdBy),
+      request.user!.organizationId,
+      String(ticket.organizationId),
+    )
+  ) {
     response.status(404).json({ error: "No se encontró el ticket." });
     return;
   }
@@ -307,9 +313,18 @@ ticketsRouter.post("/:ticketId/messages", async (request, response) => {
     return;
   }
   const ticket = mongoose.Types.ObjectId.isValid(ticketId)
-    ? await Ticket.findById(ticketId).select("_id organizationId")
-    : await Ticket.findOne({ code: ticketId }).select("_id organizationId");
-  if (!ticket || !canAccessTicket(request.user!, ticket.organizationId)) {
+    ? await Ticket.findById(ticketId).select("_id organizationId createdBy")
+    : await Ticket.findOne({ code: ticketId }).select("_id organizationId createdBy");
+  if (
+    !ticket ||
+    !canAccessTicket(
+      request.user!.role,
+      request.user!.id,
+      String(ticket.createdBy),
+      request.user!.organizationId,
+      String(ticket.organizationId),
+    )
+  ) {
     response.status(404).json({ error: "No se encontró el ticket." });
     return;
   }
@@ -340,8 +355,17 @@ ticketsRouter.patch(
     const ticketIdQuery = mongoose.Types.ObjectId.isValid(ticketId)
       ? { _id: ticketId }
       : { code: ticketId };
-    const currentTicket = await Ticket.findOne(ticketIdQuery).select("_id organizationId");
-    if (!currentTicket) {
+    const currentTicket = await Ticket.findOne(ticketIdQuery).select("_id organizationId createdBy");
+    if (
+      !currentTicket ||
+      !canAccessTicket(
+        request.user!.role,
+        request.user!.id,
+        String(currentTicket.createdBy),
+        request.user!.organizationId,
+        String(currentTicket.organizationId),
+      )
+    ) {
       response.status(404).json({ error: "No se encontró el ticket." });
       return;
     }

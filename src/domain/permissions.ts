@@ -14,3 +14,15 @@ export function canAccessOrganization(
 ) {
   return role !== "CLIENT" || userOrganizationId === requestedOrganizationId;
 }
+
+export function canAccessTicket(
+  role: Role,
+  userId: string,
+  ticketCreatorId: string,
+  userOrganizationId: string | undefined,
+  ticketOrganizationId: string,
+) {
+  return role === "CLIENT"
+    ? canAccessOrganization(role, userOrganizationId, ticketOrganizationId)
+    : userId === ticketCreatorId;
+}

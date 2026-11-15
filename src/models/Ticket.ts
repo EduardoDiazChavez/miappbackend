@@ -16,6 +16,7 @@ const ticketSchema = new Schema(
 );
 
 ticketSchema.index({ organizationId: 1, createdAt: -1 });
+ticketSchema.index({ createdBy: 1, createdAt: -1 });
 ticketSchema.index(
   { organizationId: 1, isOpen: 1 },
   { unique: true, partialFilterExpression: { isOpen: true } },
