@@ -32,6 +32,10 @@ test("clients can access every ticket from their organization, regardless of its
   assert.equal(canAccessTicket("CLIENT", "client-1", "user-1", "org-1", "org-2"), false);
 });
 
+test("administrators can access tickets created by any user", () => {
+  assert.equal(canAccessTicket("ADMIN", "admin-1", "user-1", undefined, "org-1"), true);
+});
+
 test("only internal roles can create tickets and only admins can manage users", () => {
   assert.equal(canCreateTickets("CLIENT"), false);
   assert.equal(canCreateTickets("OPERATOR"), true);

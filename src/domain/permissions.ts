@@ -22,7 +22,9 @@ export function canAccessTicket(
   userOrganizationId: string | undefined,
   ticketOrganizationId: string,
 ) {
-  return role === "CLIENT"
-    ? canAccessOrganization(role, userOrganizationId, ticketOrganizationId)
-    : userId === ticketCreatorId;
+  if (role === "ADMIN") return true;
+  if (role === "CLIENT") {
+    return canAccessOrganization(role, userOrganizationId, ticketOrganizationId);
+  }
+  return userId === ticketCreatorId;
 }

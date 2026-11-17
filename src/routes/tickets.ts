@@ -5,7 +5,9 @@ import { requireAuth, requireRoles } from "../middleware/auth.js";
 import { Ticket } from "../models/Ticket.js";
 import { TicketMessage } from "../models/TicketMessage.js";
 import { Organization } from "../models/Organization.js";
+import { User } from "../models/User.js";
 import { internalRoles } from "../domain/roles.js";
+import { parseTicketDateRange } from "../domain/ticket-date-filter.js";
 import {
   canAccessTicket,
   canCreateOrganizationTickets,
@@ -54,7 +56,7 @@ ticketsRouter.get("/", async (request, response) => {
       return;
     }
     query.organizationId = user.organizationId;
-  } else {
+  } else if (user.role !== "ADMIN") {
     query.createdBy = user.id;
     if (typeof request.query.organizationId === "string") {
       if (!mongoose.Types.ObjectId.isValid(request.query.organizationId)) {
@@ -63,6 +65,18 @@ ticketsRouter.get("/", async (request, response) => {
       }
       query.organizationId = request.query.organizationId;
     }
+  }
+
+  if (request.query.userId !== undefined) {
+    if (user.role !== "ADMIN" && user.role !== "CLIENT") {
+      response.status(403).json({ error: "No tienes permiso para filtrar tickets por usuario." });
+      return;
+    }
+    if (typeof request.query.userId !== "string" || !mongoose.Types.ObjectId.isValid(request.query.userId)) {
+      response.status(400).json({ error: "El usuario indicado no es válido." });
+      return;
+    }
+    query.createdBy = request.query.userId;
   }
 
   if (typeof request.query.status === "string") {
@@ -74,12 +88,22 @@ ticketsRouter.get("/", async (request, response) => {
     query.status = statusResult.data;
   }
 
+  const dateRange = parseTicketDateRange(request.query.dateFrom, request.query.dateTo);
+  if ("error" in dateRange) {
+    response.status(400).json({ error: dateRange.error });
+    return;
+  }
+  if ("createdAt" in dateRange) {
+    query.createdAt = dateRange.createdAt;
+  }
+
   const page = Math.max(1, Number(request.query.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(request.query.limit) || 20));
   const [tickets, total] = await Promise.all([
     Ticket.find(query)
       .populate("organizationId", "name")
       .populate("assignedTo", "name")
+      .populate("createdBy", "name")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -268,6 +292,29 @@ ticketsRouter.post("/", requireRoles(...internalRoles), async (request, response
     visibility: "CLIENT",
   });
   response.status(201).json({ ticket, message: initialMessage });
+});
+
+ticketsRouter.get("/filter-options", async (request, response) => {
+  const user = request.user!;
+  const query: Record<string, unknown> = {};
+  if (user.role === "CLIENT") {
+    if (!user.organizationId) {
+      response.json({ users: [] });
+      return;
+    }
+    query.organizationId = user.organizationId;
+  } else if (user.role !== "ADMIN") {
+    query.createdBy = user.id;
+  }
+
+  const creatorIds = await Ticket.distinct("createdBy", query);
+  const users = await User.find({ _id: { $in: creatorIds } })
+    .select("name")
+    .sort({ name: 1 })
+    .lean();
+  response.json({
+    users: users.map((filterUser) => ({ id: String(filterUser._id), name: filterUser.name })),
+  });
 });
 
 ticketsRouter.get("/:ticketId", async (request, response) => {
