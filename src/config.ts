@@ -14,7 +14,7 @@ const configSchema = z.object({
   }),
   JWT_SECRET: z.string().min(32),
   GOOGLE_CLIENT_ID: z.string().default(""),
-  FRONTEND_ORIGIN: z.string().url(),
+  FRONTEND_ORIGIN: z.string().url().transform((value) => new URL(value).origin),
   COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax"),
   COOKIE_SECURE: z.string().default("false").transform((value) => value === "true"),
 });
