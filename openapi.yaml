@@ -65,6 +65,17 @@ paths:
         "401": { description: No active session }
     post:
       summary: Create a ticket for an enabled organization (internal roles only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, process, description]
+              properties:
+                organizationId: { type: string }
+                process: { type: string, minLength: 3, maxLength: 160 }
+                description: { type: string, minLength: 5, maxLength: 5000 }
       responses:
         "201": { description: Ticket created and initial history message recorded }
         "403": { description: Client role cannot create tickets, or organization ticket creation is disabled }
@@ -107,6 +118,20 @@ paths:
       responses:
         "200": { description: Ticket updated and history message recorded }
         "403": { description: Client role cannot change status }
+  /tickets/{idOrCode}/sheets-sync:
+    post:
+      summary: Synchronize a closed ticket with Google Sheets (internal roles only)
+      parameters:
+        - in: path
+          name: idOrCode
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Ticket synchronized with Google Sheets }
+        "404": { description: Ticket not found or outside the user's scope }
+        "409": { description: Ticket is not closed or no active workbook/tab is configured }
+        "502": { description: Google Sheets synchronization failed }
+        "503": { description: Google Sheets is not configured }
   /admin/organizations:
     get:
       summary: List active, blocked and archived organizations (ADMIN only)
@@ -150,6 +175,69 @@ paths:
       responses:
         "200": { description: Organization updated }
         "404": { description: Organization not found }
+  /admin/sheets/workbooks:
+    get:
+      summary: List ticket-generating users, active organizations and monthly workbook mappings (ADMIN only)
+      responses:
+        "200": { description: User, organization and workbook configuration }
+    post:
+      summary: Configure and activate a monthly workbook for one ticket-generating user (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, periodLabel, spreadsheetId, organizationSheets]
+              properties:
+                userId: { type: string }
+                periodLabel: { type: string, maxLength: 80 }
+                spreadsheetId: { type: string, description: Google Sheets URL or ID }
+                organizationSheets:
+                  type: array
+                  items:
+                    type: object
+                    required: [organizationId, sheetId]
+                    properties:
+                      organizationId: { type: string }
+                      sheetId: { type: integer, minimum: 0 }
+      responses:
+        "201": { description: Workbook configured and activated }
+        "400": { description: Invalid mappings or missing company tabs }
+        "409": { description: A workbook already exists for that user and period }
+        "503": { description: Google Sheets credentials are not configured }
+  /admin/sheets/tabs:
+    get:
+      summary: Read spreadsheet title, time zone and existing tabs (ADMIN only)
+      parameters:
+        - in: query
+          name: spreadsheetId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Spreadsheet metadata and tabs }
+        "502": { description: Spreadsheet is inaccessible to the service account }
+  /admin/sheets/workbooks/{workbookId}/mappings:
+    put:
+      summary: Update company-to-tab mappings for a monthly workbook (ADMIN only)
+      parameters:
+        - in: path
+          name: workbookId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Company tabs updated }
+        "400": { description: Invalid or incomplete mappings }
+  /admin/sheets/workbooks/{workbookId}/activate:
+    post:
+      summary: Activate a previously configured monthly workbook (ADMIN only)
+      parameters:
+        - in: path
+          name: workbookId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Workbook activated and previous user workbook closed }
   /admin/invitations/clients:
     post:
       summary: Create a one-time client invitation (ADMIN only)

@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "bootstrap:admin": "tsx src/scripts/bootstrap-admin.ts",
+    "migrate:ticket-process": "tsx src/scripts/migrate-ticket-title-to-process.ts",
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {

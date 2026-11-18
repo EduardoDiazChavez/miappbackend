@@ -4,7 +4,7 @@ const ticketSchema = new Schema(
   {
     code: { type: String, required: true, unique: true, index: true },
     organizationId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
-    title: { type: String, required: true, trim: true, maxlength: 160 },
+    process: { type: String, required: true, trim: true, maxlength: 160 },
     description: { type: String, required: true, trim: true, maxlength: 5000 },
     status: { type: String, enum: ["OPEN", "IN_PROGRESS", "WAITING", "CLOSED"], default: "OPEN", index: true },
     isOpen: { type: Boolean, required: true, default: true },

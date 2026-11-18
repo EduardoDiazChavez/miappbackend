@@ -28,15 +28,21 @@ Cada solicitud autenticada vuelve a consultar el usuario activo en MongoDB, de m
 - `GET /tickets?page=1&limit=20&status=OPEN` — paginación y filtro de estado; para clientes aplica automáticamente su empresa.
 - `GET /tickets/organizations` — organizaciones activas visibles al usuario; cliente solo ve la propia.
 - `GET /tickets/summary` — resumen y serie mensual; solo roles internos.
-- `POST /tickets` — solo roles internos. Campos: `organizationId`, `title`, `description`, `area`, `priority`.
+- `POST /tickets` — solo roles internos. Campos: `organizationId`, `process`, `description`.
 - `GET /tickets/:idOrCode` — detalle e historial de conversación visible al rol.
 - `POST /tickets/:idOrCode/messages` — `{ "content": "..." }`, persiste mensaje visible en el historial.
 - `PATCH /tickets/:idOrCode/status` — `{ "status": "OPEN|IN_PROGRESS|WAITING|CLOSED" }`, solo roles internos; registra el cambio en el historial.
+- `POST /tickets/:idOrCode/sheets-sync` — solo roles internos; sincroniza un ticket cerrado con la hoja mensual activa del usuario que lo creó y la pestaña asignada a su empresa. Conserva el destino y la fila para que los reintentos actualicen la misma fila.
 
 #### Administración
 
 - `GET /admin/organizations` — listar organizaciones activas.
 - `POST /admin/organizations` — `{ "name": "..." }`.
+- `GET /admin/sheets/workbooks` — listar usuarios internos habilitados para generar tickets, empresas activas y archivos mensuales configurados.
+- `GET /admin/sheets/tabs?spreadsheetId=...` — consultar pestañas existentes de un archivo accesible a la cuenta de servicio.
+- `POST /admin/sheets/workbooks` — configurar y activar un archivo mensual para un usuario; incluye `userId`, `periodLabel`, `spreadsheetId` y el arreglo `organizationSheets` con `organizationId` y `sheetId`.
+- `PUT /admin/sheets/workbooks/:workbookId/mappings` — actualizar la relación de empresas con pestañas existentes.
+- `POST /admin/sheets/workbooks/:workbookId/activate` — activar un archivo histórico configurado y cerrar el activo anterior del usuario.
 - `POST /admin/invitations/clients` — `{ "name": "...", "email": "...", "organizationId": "..." }`. Devuelve una URL de invitación de un solo uso; el token original no se persiste.
 - `POST /admin/users/internal` — `{ "name": "...", "email": "...", "role": "OPERATOR|SUPERVISOR" }`.
 
@@ -45,6 +51,8 @@ Todas las rutas `/admin` requieren `ADMIN`. `POST /tickets` y el cambio de estad
 ### Datos
 
 MongoDB usa colecciones `users`, `organizations`, `tickets`, `ticketmessages` e `invitations`. Los tickets referencian organización/creador/asignado; los mensajes se guardan aparte para soportar crecimiento del historial. Los índices cubren correo único, código de ticket, empresa/fecha, estado e historial cronológico.
+
+La integración mensual agrega las colecciones `googlesheetworkbooks`, `googlesheetrowcursors` y `ticketsheetsyncs`. Al desplegar el cambio en una base existente, realiza primero una copia de seguridad y ejecuta `npm.cmd run migrate:ticket-process` desde el backend. La migración renombra `title` a `process` sin eliminar tickets. Configura `GOOGLE_APPLICATION_CREDENTIALS` en el entorno de la API; los IDs de archivos y pestañas se administran por usuario desde la pantalla de hojas Google.
 
 ### Configuración y puesta en marcha
 

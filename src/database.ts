@@ -1,6 +1,9 @@
 import mongoose, { type ConnectOptions } from "mongoose";
 import { config } from "./config.js";
 import { Ticket } from "./models/Ticket.js";
+import { GoogleSheetRowCursor } from "./models/GoogleSheetRowCursor.js";
+import { GoogleSheetWorkbook } from "./models/GoogleSheetWorkbook.js";
+import { TicketSheetSync } from "./models/TicketSheetSync.js";
 
 const invalidTlsOptions = [
   "tlsinsecure",
@@ -102,6 +105,11 @@ export async function connectToDatabase(): Promise<void> {
     { organizationId: 1, isOpen: 1 },
     { unique: true, partialFilterExpression: { isOpen: true } },
   );
+  await Promise.all([
+    GoogleSheetWorkbook.createIndexes(),
+    GoogleSheetRowCursor.createIndexes(),
+    TicketSheetSync.createIndexes(),
+  ]);
   console.info("MongoDB connection established.");
 }
 

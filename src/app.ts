@@ -7,6 +7,7 @@ import { config } from "./config.js";
 import { errorHandler } from "./middleware/errors.js";
 import { adminRouter } from "./routes/admin.js";
 import { authRouter } from "./routes/auth.js";
+import { adminSheetsRouter } from "./routes/admin-sheets.js";
 import { ticketsRouter } from "./routes/tickets.js";
 
 export const app = express();
@@ -40,6 +41,7 @@ app.get("/health", (_request, response) => {
 });
 app.use("/auth", authRouter);
 app.use("/tickets", ticketsRouter);
+app.use("/admin/sheets", adminSheetsRouter);
 app.use("/admin", adminRouter);
 app.use((_request, response) => {
   response.status(404).json({ error: "Ruta no encontrada." });

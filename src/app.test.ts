@@ -49,7 +49,7 @@ test("CORS accepts the frontend origin when its configured URL ends with a slash
   assert.equal(response.headers.get("access-control-allow-origin"), "http://localhost:3000");
 });
 
-test("ticket APIs require a session before reading or writing", async (context) => {
+test("ticket and sheet administration APIs require a session before reading or writing", async (context) => {
   const server = app.listen(0);
   await once(server, "listening");
   context.after(() => new Promise<void>((resolve, reject) => {
@@ -62,4 +62,8 @@ test("ticket APIs require a session before reading or writing", async (context) 
   const response = await fetch(`${baseUrl}/tickets`);
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), { error: "Debes iniciar sesión." });
+
+  const sheetsResponse = await fetch(`${baseUrl}/admin/sheets/workbooks`);
+  assert.equal(sheetsResponse.status, 401);
+  assert.deepEqual(await sheetsResponse.json(), { error: "Debes iniciar sesión." });
 });

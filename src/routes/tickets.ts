@@ -4,6 +4,9 @@ import { z } from "zod";
 import { requireAuth, requireRoles } from "../middleware/auth.js";
 import { Ticket } from "../models/Ticket.js";
 import { TicketMessage } from "../models/TicketMessage.js";
+import { GoogleSheetRowCursor } from "../models/GoogleSheetRowCursor.js";
+import { GoogleSheetWorkbook } from "../models/GoogleSheetWorkbook.js";
+import { TicketSheetSync } from "../models/TicketSheetSync.js";
 import { Organization } from "../models/Organization.js";
 import { User } from "../models/User.js";
 import { internalRoles } from "../domain/roles.js";
@@ -13,6 +16,11 @@ import {
   canCreateOrganizationTickets,
 } from "../domain/permissions.js";
 import { createTicketCode, getNextTicketSequence } from "../domain/ticket-code.js";
+import {
+  getLastDataRow,
+  isGoogleSheetsConfigured,
+  writeClosedTicketRow,
+} from "../services/google-sheets.js";
 
 export const ticketsRouter = Router();
 ticketsRouter.use(requireAuth);
@@ -37,13 +45,91 @@ function findOpenTicket(organizationId: unknown, excludeTicketId?: unknown) {
     status: { $in: openTicketStatuses },
     ...(excludeTicketId ? { _id: { $ne: excludeTicketId } } : {}),
   })
-    .select("code title status")
+    .select("code process status")
     .sort({ createdAt: -1 })
     .lean();
 }
 
 function isDuplicateKeyError(error: unknown) {
   return typeof error === "object" && error !== null && "code" in error && error.code === 11000;
+}
+
+class SheetDestinationConfigurationError extends Error {}
+
+async function allocateSheetRow(spreadsheetId: string, sheetId: number, worksheetName: string) {
+  const filter = { spreadsheetId, sheetId };
+  let cursor = await GoogleSheetRowCursor.findOneAndUpdate(
+    filter,
+    { $inc: { lastAllocatedRow: 1 } },
+    { new: true },
+  );
+  if (!cursor) {
+    const lastDataRow = await getLastDataRow(spreadsheetId, worksheetName);
+    try {
+      await GoogleSheetRowCursor.updateOne(
+        filter,
+        { $setOnInsert: { lastAllocatedRow: lastDataRow } },
+        { upsert: true },
+      );
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) throw error;
+    }
+    cursor = await GoogleSheetRowCursor.findOneAndUpdate(
+      filter,
+      { $inc: { lastAllocatedRow: 1 } },
+      { new: true },
+    );
+  }
+  if (!cursor) throw new Error("Could not allocate a Google Sheets row.");
+  return cursor.lastAllocatedRow;
+}
+
+async function getOrCreateTicketSheetSync(ticket: {
+  _id: mongoose.Types.ObjectId;
+  createdBy: mongoose.Types.ObjectId;
+  organizationId: mongoose.Types.ObjectId;
+}) {
+  const existingSync = await TicketSheetSync.findOne({ ticketId: ticket._id });
+  if (existingSync) return existingSync;
+
+  const workbook = await GoogleSheetWorkbook.findOne({
+    userId: ticket.createdBy,
+    isActive: true,
+  });
+  if (!workbook) {
+    throw new SheetDestinationConfigurationError(
+      "No hay un archivo mensual activo configurado para quien creó este ticket.",
+    );
+  }
+  const mapping = workbook.organizationSheets.find(
+    (sheet) => String(sheet.organizationId) === String(ticket.organizationId),
+  );
+  if (!mapping) {
+    throw new SheetDestinationConfigurationError(
+      "El archivo activo no tiene una pestaña configurada para la empresa del ticket.",
+    );
+  }
+  const rowNumber = await allocateSheetRow(
+    workbook.spreadsheetId,
+    mapping.sheetId,
+    mapping.worksheetName,
+  );
+  try {
+    return await TicketSheetSync.create({
+      ticketId: ticket._id,
+      workbookId: workbook._id,
+      spreadsheetId: workbook.spreadsheetId,
+      sheetId: mapping.sheetId,
+      worksheetName: mapping.worksheetName,
+      rowNumber,
+      status: "PENDING",
+    });
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) throw error;
+    const concurrentSync = await TicketSheetSync.findOne({ ticketId: ticket._id });
+    if (!concurrentSync) throw error;
+    return concurrentSync;
+  }
 }
 
 ticketsRouter.get("/", async (request, response) => {
@@ -142,7 +228,7 @@ ticketsRouter.get("/next-sequence", requireRoles(...internalRoles), async (reque
   response.json({
     nextSequence: getNextTicketSequence(latestTicket?.code),
     openTicket: openTicket
-      ? { code: openTicket.code, title: openTicket.title, status: openTicket.status }
+      ? { code: openTicket.code, process: openTicket.process, status: openTicket.status }
       : null,
   });
 });
@@ -232,7 +318,7 @@ ticketsRouter.post("/", requireRoles(...internalRoles), async (request, response
       error: openTicketError,
       openTicket: {
         code: existingOpenTicket.code,
-        title: existingOpenTicket.title,
+        process: existingOpenTicket.process,
         status: existingOpenTicket.status,
       },
     });
@@ -258,7 +344,7 @@ ticketsRouter.post("/", requireRoles(...internalRoles), async (request, response
       try {
         return await Ticket.create({
           organizationId: input.organizationId,
-          title: input.process,
+          process: input.process,
           description: input.description,
           code,
           isOpen: true,
@@ -278,7 +364,7 @@ ticketsRouter.post("/", requireRoles(...internalRoles), async (request, response
         ? openTicketError
         : "No se pudo asignar un correlativo único. Intenta crear el ticket nuevamente.",
       ...(openTicket
-        ? { openTicket: { code: openTicket.code, title: openTicket.title, status: openTicket.status } }
+        ? { openTicket: { code: openTicket.code, process: openTicket.process, status: openTicket.status } }
         : {}),
     });
     return;
@@ -288,7 +374,7 @@ ticketsRouter.post("/", requireRoles(...internalRoles), async (request, response
     authorId: request.user!.id,
     authorName: request.user!.name,
     authorRole: "TEAM",
-    content: `Ticket creado: ${ticket.title}`,
+    content: `Ticket creado: ${ticket.process}`,
     visibility: "CLIENT",
   });
   response.status(201).json({ ticket, message: initialMessage });
@@ -346,8 +432,28 @@ ticketsRouter.get("/:ticketId", async (request, response) => {
   if (request.user!.role === "CLIENT") {
     messageQuery.visibility = "CLIENT";
   }
-  const messages = await TicketMessage.find(messageQuery).sort({ createdAt: 1 }).lean();
-  response.json({ ticket, messages });
+  const [messages, sheetSync] = await Promise.all([
+    TicketMessage.find(messageQuery).sort({ createdAt: 1 }).lean(),
+    internalRoles.includes(request.user!.role)
+      ? TicketSheetSync.findOne({ ticketId: ticket._id })
+          .select("status attempts lastError syncedAt")
+          .lean()
+      : null,
+  ]);
+  response.json({
+    ticket,
+    messages,
+    ...(sheetSync
+      ? {
+          sheetSync: {
+            status: sheetSync.status,
+            attempts: sheetSync.attempts,
+            lastError: sheetSync.lastError,
+            syncedAt: sheetSync.syncedAt,
+          },
+        }
+      : {}),
+  });
 });
 
 ticketsRouter.post("/:ticketId/messages", async (request, response) => {
@@ -453,5 +559,124 @@ ticketsRouter.patch(
       visibility: "CLIENT",
     });
     response.json({ ticket });
+  },
+);
+
+ticketsRouter.post(
+  "/:ticketId/sheets-sync",
+  requireRoles(...internalRoles),
+  async (request, response) => {
+    const ticketId = Array.isArray(request.params.ticketId)
+      ? request.params.ticketId[0]
+      : request.params.ticketId;
+    if (!ticketId) {
+      response.status(404).json({ error: "No se encontró el ticket." });
+      return;
+    }
+    if (!isGoogleSheetsConfigured()) {
+      response.status(503).json({
+        error: "Configura Google Sheets en la API antes de sincronizar tickets.",
+      });
+      return;
+    }
+
+    const ticketIdQuery = mongoose.Types.ObjectId.isValid(ticketId)
+      ? { _id: ticketId }
+      : { code: ticketId };
+    const ticket = await Ticket.findOne(ticketIdQuery).select(
+      "_id organizationId createdBy code process description status createdAt closedAt",
+    );
+    if (
+      !ticket ||
+      !canAccessTicket(
+        request.user!.role,
+        request.user!.id,
+        String(ticket.createdBy),
+        request.user!.organizationId,
+        String(ticket.organizationId),
+      )
+    ) {
+      response.status(404).json({ error: "No se encontró el ticket." });
+      return;
+    }
+    if (ticket.status !== "CLOSED") {
+      response.status(409).json({ error: "Solo se pueden sincronizar tickets cerrados." });
+      return;
+    }
+    if (!ticket.closedAt) {
+      response.status(409).json({ error: "El ticket no tiene una hora de cierre registrada." });
+      return;
+    }
+    let syncRecord: Awaited<ReturnType<typeof getOrCreateTicketSheetSync>> | null = null;
+    let syncResult: {
+      spreadsheetTitle: string;
+      worksheetName: string;
+      rowNumber: number;
+    } | null = null;
+    try {
+      syncRecord = await getOrCreateTicketSheetSync({
+        _id: ticket._id,
+        createdBy: ticket.createdBy,
+        organizationId: ticket.organizationId,
+      });
+      const workbook = await GoogleSheetWorkbook.findById(syncRecord.workbookId);
+      if (!workbook) throw new Error("No se encontró el archivo asignado a este ticket.");
+
+      await TicketSheetSync.updateOne(
+        { _id: syncRecord._id },
+        {
+          $set: { status: "PENDING" },
+          $unset: { lastError: 1 },
+          $inc: { attempts: 1 },
+        },
+      );
+      await writeClosedTicketRow({
+        spreadsheetId: syncRecord.spreadsheetId,
+        worksheetName: syncRecord.worksheetName,
+        rowNumber: syncRecord.rowNumber,
+        timeZone: workbook.timeZone,
+        ticket: {
+          process: ticket.process,
+          description: ticket.description,
+          createdAt: ticket.createdAt,
+          closedAt: ticket.closedAt,
+        },
+      });
+      await TicketSheetSync.updateOne(
+        { _id: syncRecord._id },
+        { $set: { status: "SYNCED", syncedAt: new Date() }, $unset: { lastError: 1 } },
+      );
+      syncResult = {
+        spreadsheetTitle: workbook.spreadsheetTitle,
+        worksheetName: syncRecord.worksheetName,
+        rowNumber: syncRecord.rowNumber,
+      };
+    } catch (error) {
+      if (syncRecord) {
+        await TicketSheetSync.updateOne(
+          { _id: syncRecord._id },
+          {
+            $set: {
+              status: "FAILED",
+              lastError: error instanceof Error ? error.message.slice(0, 1000) : "Unknown sync error",
+            },
+          },
+        );
+      }
+      if (error instanceof SheetDestinationConfigurationError) {
+        response.status(409).json({ error: error.message });
+        return;
+      }
+      console.error("Google Sheets ticket sync failed:", error);
+      response.status(502).json({
+        error: error instanceof Error ? error.message : "No se pudo actualizar Google Sheets para este ticket.",
+      });
+      return;
+    }
+
+    response.json({
+      message: "Ticket sincronizado con Google Sheets.",
+      sync: { status: "SYNCED", ...syncResult },
+    });
   },
 );
