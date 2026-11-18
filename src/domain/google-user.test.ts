@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildNewGoogleUser } from "./google-user.js";
 
-test("new Google users receive an active OPERATOR account", () => {
+test("new Google users receive an active ADVISOR account", () => {
   assert.deepEqual(
     buildNewGoogleUser({
       email: "employee@mrm.com.ve",
@@ -12,7 +12,7 @@ test("new Google users receive an active OPERATOR account", () => {
     {
       email: "employee@mrm.com.ve",
       name: "Employee Name",
-      role: "OPERATOR",
+      role: "ADVISOR",
       active: true,
       googleSubject: "google-subject",
     },

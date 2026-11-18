@@ -13,17 +13,18 @@ if (!email || !name) {
 try {
   await connectToDatabase();
   const existingUser = await User.findOne({ email });
-  if (existingUser && existingUser.role !== "ADMIN") {
+  if (existingUser && existingUser.role !== "ADMIN" && existingUser.role !== "SUPER_ADMIN") {
     throw new Error("The requested administrator email already belongs to a non-admin account.");
   }
   if (existingUser) {
     existingUser.name = name;
+    existingUser.role = "SUPER_ADMIN";
     existingUser.active = true;
     await existingUser.save();
   } else {
-    await User.create({ email, name, role: "ADMIN", active: true });
+    await User.create({ email, name, role: "SUPER_ADMIN", active: true });
   }
-  console.info("Administrator bootstrapped; the first verified Google sign-in links the account.");
+  console.info("Super admin bootstrapped; the first verified Google sign-in links the account.");
 } finally {
   await disconnectFromDatabase();
 }

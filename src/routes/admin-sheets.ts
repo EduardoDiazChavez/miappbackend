@@ -2,7 +2,7 @@ import { Router } from "express";
 import mongoose from "mongoose";
 import { z } from "zod";
 import { requireAuth, requireRoles } from "../middleware/auth.js";
-import { internalRoles } from "../domain/roles.js";
+import { adminRoles, internalRoles } from "../domain/roles.js";
 import { GoogleSheetRowCursor } from "../models/GoogleSheetRowCursor.js";
 import { GoogleSheetWorkbook } from "../models/GoogleSheetWorkbook.js";
 import { Organization } from "../models/Organization.js";
@@ -15,7 +15,7 @@ import {
 } from "../services/google-sheets.js";
 
 export const adminSheetsRouter = Router();
-adminSheetsRouter.use(requireAuth, requireRoles("ADMIN"));
+adminSheetsRouter.use(requireAuth, requireRoles(...adminRoles));
 
 const sheetMappingSchema = z.object({
   organizationId: z.string().refine(mongoose.Types.ObjectId.isValid),

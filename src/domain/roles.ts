@@ -1,4 +1,9 @@
-export const roles = ["CLIENT", "OPERATOR", "SUPERVISOR", "ADMIN"] as const;
+export const roles = [
+  "CLIENT",
+  "ADVISOR",
+  "ADMIN",
+  "SUPER_ADMIN",
+] as const;
 
 export type Role = (typeof roles)[number];
 
@@ -10,4 +15,5 @@ export type AuthenticatedUser = {
   organizationId?: string;
 };
 
-export const internalRoles: Role[] = ["OPERATOR", "SUPERVISOR", "ADMIN"];
+export const adminRoles: Role[] = ["ADMIN", "SUPER_ADMIN"];
+export const internalRoles: Role[] = ["ADVISOR", ...adminRoles];

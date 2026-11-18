@@ -3,6 +3,7 @@ import { Router } from "express";
 import mongoose from "mongoose";
 import { z } from "zod";
 import { requireAuth, requireRoles } from "../middleware/auth.js";
+import { adminRoles } from "../domain/roles.js";
 import { config } from "../config.js";
 import { createInvitationToken } from "./auth.js";
 import { Invitation } from "../models/Invitation.js";
@@ -10,7 +11,7 @@ import { Organization } from "../models/Organization.js";
 import { User } from "../models/User.js";
 
 export const adminRouter = Router();
-adminRouter.use(requireAuth, requireRoles("ADMIN"));
+adminRouter.use(requireAuth, requireRoles(...adminRoles));
 
 const organizationCodeSchema = z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,8}$/);
 const organizationSchema = z.object({
@@ -36,7 +37,7 @@ const invitationSchema = z.object({
 const internalUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.string().trim().email().max(254),
-  role: z.enum(["OPERATOR", "SUPERVISOR"]),
+  role: z.literal("ADVISOR"),
 });
 
 adminRouter.post("/users/internal", async (request, response) => {

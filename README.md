@@ -23,7 +23,7 @@ Edita `.env` y configura:
 - `FRONTEND_ORIGIN`: origen exacto del frontend, por ejemplo `http://localhost:3000`.
 - `GOOGLE_CLIENT_ID`: Client ID de la aplicación OAuth.
 - `GOOGLE_APPLICATION_CREDENTIALS`: ruta absoluta al JSON de la cuenta de servicio, guardado fuera del repositorio.
-- `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_NAME`: administrador inicial.
+- `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_NAME`: cuenta inicial de Super admin.
 - `DNS_SERVERS`: opcional solo en desarrollo, para redes donde Node no resuelve DNS correctamente. En producción, configura DNS en el host o contenedor.
 
 En Atlas, limita la lista **Network Access** a las IPs públicas necesarias y no uses `0.0.0.0/0`. Protege el URI y no lo subas a Git. La conexión remota requiere TLS y valida los certificados; no agregues opciones que deshabiliten esa validación.
@@ -40,7 +40,7 @@ npm.cmd run migrate:ticket-process
 
 La migración conserva los tickets y sus mensajes; no borra información.
 
-## Crear el administrador inicial
+## Crear el Super admin inicial
 
 Con `.env` configurado:
 
@@ -48,7 +48,7 @@ Con `.env` configurado:
 npm.cmd run bootstrap:admin
 ```
 
-El correo debe estar autorizado para acceder con Google. El primer inicio de sesión Google verificado enlaza la identidad.
+El comando crea o promueve la cuenta indicada a Super admin; las demás cuentas Admin no cambian. El correo debe estar autorizado para acceder con Google. El primer inicio de sesión Google verificado enlaza la identidad. En una base existente, vuelve a ejecutar este comando para promover la cuenta bootstrap.
 
 ## Ejecutar y validar
 

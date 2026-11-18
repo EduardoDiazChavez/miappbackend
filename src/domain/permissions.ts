@@ -1,11 +1,11 @@
-import type { Role } from "./roles.js";
+import { adminRoles, type Role } from "./roles.js";
 
 export const canCreateTickets = (role: Role) => role !== "CLIENT";
 
 export const canCreateOrganizationTickets = (role: Role, allowed: boolean) =>
   canCreateTickets(role) && allowed;
 
-export const canManageUsers = (role: Role) => role === "ADMIN";
+export const canManageUsers = (role: Role) => adminRoles.includes(role);
 
 export function canAccessOrganization(
   role: Role,
@@ -22,7 +22,7 @@ export function canAccessTicket(
   userOrganizationId: string | undefined,
   ticketOrganizationId: string,
 ) {
-  if (role === "ADMIN") return true;
+  if (adminRoles.includes(role)) return true;
   if (role === "CLIENT") {
     return canAccessOrganization(role, userOrganizationId, ticketOrganizationId);
   }

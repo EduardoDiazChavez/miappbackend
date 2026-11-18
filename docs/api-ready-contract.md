@@ -7,9 +7,9 @@ La API se ejecuta como proyecto Node.js independiente en `backend/`. Todas las r
 | Rol API | Flujo | Permisos principales |
 | --- | --- | --- |
 | `CLIENT` | Contraseña definida al aceptar una invitación | Listar y consultar tickets de su organización; enviar mensajes visibles al cliente. No crea ni cierra tickets. |
-| `OPERATOR` | Google, cuenta autorizada por administración | Consultar tickets de operación, crear tickets, responder y cambiar estados. |
-| `SUPERVISOR` | Google, cuenta autorizada por administración | Mismos permisos operativos iniciales. |
-| `ADMIN` | Google, cuenta bootstrap | Operación e invitaciones; administrar organizaciones y autorizar cuentas internas. |
+| `ADVISOR` | Google, cuenta autorizada por administración | Consultar sus tickets, crear tickets, responder y cambiar estados. |
+| `ADMIN` | Google, cuenta autorizada | Conserva las funciones administrativas actuales y puede gestionar organizaciones, invitaciones y cuentas internas. |
+| `SUPER_ADMIN` | Google, cuenta bootstrap | Incluye todos los permisos de Admin; queda reservado para funciones adicionales de métricas. |
 
 Cada solicitud autenticada vuelve a consultar el usuario activo en MongoDB, de modo que rol y organización revocados no dependan del tiempo de vida del JWT. Los clientes se filtran por `organizationId` en la API. Un ticket que no pertenece a la organización responde como no encontrado.
 
@@ -19,7 +19,7 @@ Cada solicitud autenticada vuelve a consultar el usuario activo en MongoDB, de m
 
 - `POST /auth/client/login` — `{ "username": "cliente@empresa.com", "password": "..." }`. Solo permite cuentas `CLIENT` activas.
 - `POST /auth/client/accept-invitation` — `{ "token": "...", "password": "..." }`. Consume una invitación vigente una sola vez y establece la cookie.
-- `POST /auth/google` — `{ "credential": "<Google ID token>" }`. Valida el ID token en el servidor y solo permite correos verificados con dominio exacto `@mrm.com.ve`. Si el correo aún no tiene cuenta, crea una cuenta interna activa con rol `OPERATOR`; las cuentas internas existentes conservan su rol. Las cuentas preexistentes inactivas o no internas siguen bloqueadas.
+- `POST /auth/google` — `{ "credential": "<Google ID token>" }`. Valida el ID token en el servidor y solo permite correos verificados con dominio exacto `@mrm.com.ve`. Si el correo aún no tiene cuenta, crea una cuenta interna activa con rol `ADVISOR`; las cuentas internas existentes conservan su rol. Las cuentas preexistentes inactivas o no internas siguen bloqueadas.
 - `GET /auth/me` — perfil autenticado.
 - `POST /auth/logout` — elimina la cookie.
 
@@ -44,13 +44,13 @@ Cada solicitud autenticada vuelve a consultar el usuario activo en MongoDB, de m
 - `PUT /admin/sheets/workbooks/:workbookId/mappings` — actualizar la relación de empresas con pestañas existentes.
 - `POST /admin/sheets/workbooks/:workbookId/activate` — activar un archivo histórico configurado y cerrar el activo anterior del usuario.
 - `POST /admin/invitations/clients` — `{ "name": "...", "email": "...", "organizationId": "..." }`. Devuelve una URL de invitación de un solo uso; el token original no se persiste.
-- `POST /admin/users/internal` — `{ "name": "...", "email": "...", "role": "OPERATOR|SUPERVISOR" }`.
+- `POST /admin/users/internal` — `{ "name": "...", "email": "...", "role": "ADVISOR" }`.
 
-Todas las rutas `/admin` requieren `ADMIN`. `POST /tickets` y el cambio de estado exigen rol interno. Los payloads se validan con Zod, hay límites de tamaño y tasa, CORS limitado a `FRONTEND_ORIGIN`, cookies seguras y protección por validación de `Origin` en operaciones mutables.
+Todas las rutas `/admin` requieren `ADMIN` o `SUPER_ADMIN`. La cuenta `BOOTSTRAP_ADMIN_EMAIL` se crea o promueve a `SUPER_ADMIN` mediante `npm.cmd run bootstrap:admin`; las demás cuentas Admin conservan su rol. `POST /tickets` y el cambio de estado exigen rol interno. Los payloads se validan con Zod, hay límites de tamaño y tasa, CORS limitado a `FRONTEND_ORIGIN`, cookies seguras y protección por validación de `Origin` en operaciones mutables.
 
 ### Datos
 
-MongoDB usa colecciones `users`, `organizations`, `tickets`, `ticketmessages` e `invitations`. Los tickets referencian organización/creador/asignado; los mensajes se guardan aparte para soportar crecimiento del historial. Los índices cubren correo único, código de ticket, empresa/fecha, estado e historial cronológico.
+MongoDB usa colecciones `users`, `organizations`, `tickets`, `ticketmessages` e `invitations`. Los tickets referencian organización/creador/asignado; los mensajes se guardan aparte para soportar crecimiento del historial. Los índices cubren correo único, código de ticket, empresa/fecha, estado e historial cronológico. Para una base existente, realiza una copia de seguridad y ejecuta `npm.cmd run bootstrap:admin` para establecer la cuenta Super admin.
 
 La integración mensual agrega las colecciones `googlesheetworkbooks`, `googlesheetrowcursors` y `ticketsheetsyncs`. Al desplegar el cambio en una base existente, realiza primero una copia de seguridad y ejecuta `npm.cmd run migrate:ticket-process` desde el backend. La migración renombra `title` a `process` sin eliminar tickets. Configura `GOOGLE_APPLICATION_CREDENTIALS` en el entorno de la API; los IDs de archivos y pestañas se administran por usuario desde la pantalla de hojas Google.
 

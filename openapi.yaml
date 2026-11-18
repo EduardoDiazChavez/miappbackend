@@ -134,11 +134,11 @@ paths:
         "503": { description: Google Sheets is not configured }
   /admin/organizations:
     get:
-      summary: List active, blocked and archived organizations (ADMIN only)
+      summary: List active, blocked and archived organizations (ADMIN or SUPER_ADMIN)
       responses:
         "200": { description: Organizations with initials, access and ticket-creation settings }
     post:
-      summary: Create a client organization with unique ticket-code initials (ADMIN only)
+      summary: Create a client organization with unique ticket-code initials (ADMIN or SUPER_ADMIN)
       requestBody:
         required: true
         content:
@@ -154,7 +154,7 @@ paths:
         "409": { description: Name or initials already in use }
   /admin/organizations/{organizationId}:
     patch:
-      summary: Edit, block, archive or restore a client organization (ADMIN only)
+      summary: Edit, block, archive or restore a client organization (ADMIN or SUPER_ADMIN)
       parameters:
         - in: path
           name: organizationId
@@ -177,11 +177,11 @@ paths:
         "404": { description: Organization not found }
   /admin/sheets/workbooks:
     get:
-      summary: List ticket-generating users, active organizations and monthly workbook mappings (ADMIN only)
+      summary: List ticket-generating users, active organizations and monthly workbook mappings (ADMIN or SUPER_ADMIN)
       responses:
         "200": { description: User, organization and workbook configuration }
     post:
-      summary: Configure and activate a monthly workbook for one ticket-generating user (ADMIN only)
+      summary: Configure and activate a monthly workbook for one ticket-generating user (ADMIN or SUPER_ADMIN)
       requestBody:
         required: true
         content:
@@ -208,7 +208,7 @@ paths:
         "503": { description: Google Sheets credentials are not configured }
   /admin/sheets/tabs:
     get:
-      summary: Read spreadsheet title, time zone and existing tabs (ADMIN only)
+      summary: Read spreadsheet title, time zone and existing tabs (ADMIN or SUPER_ADMIN)
       parameters:
         - in: query
           name: spreadsheetId
@@ -219,7 +219,7 @@ paths:
         "502": { description: Spreadsheet is inaccessible to the service account }
   /admin/sheets/workbooks/{workbookId}/mappings:
     put:
-      summary: Update company-to-tab mappings for a monthly workbook (ADMIN only)
+      summary: Update company-to-tab mappings for a monthly workbook (ADMIN or SUPER_ADMIN)
       parameters:
         - in: path
           name: workbookId
@@ -230,7 +230,7 @@ paths:
         "400": { description: Invalid or incomplete mappings }
   /admin/sheets/workbooks/{workbookId}/activate:
     post:
-      summary: Activate a previously configured monthly workbook (ADMIN only)
+      summary: Activate a previously configured monthly workbook (ADMIN or SUPER_ADMIN)
       parameters:
         - in: path
           name: workbookId
@@ -240,12 +240,12 @@ paths:
         "200": { description: Workbook activated and previous user workbook closed }
   /admin/invitations/clients:
     post:
-      summary: Create a one-time client invitation (ADMIN only)
+      summary: Create a one-time client invitation (ADMIN or SUPER_ADMIN)
       responses:
         "201": { description: Single-use invitation URL, expires after 72 hours }
   /admin/users/internal:
     post:
-      summary: Allowlist an internal user for Google sign-in (ADMIN only)
+      summary: Allowlist an advisor for Google sign-in (ADMIN or SUPER_ADMIN)
       responses:
         "201": { description: Internal account authorized }
 components:

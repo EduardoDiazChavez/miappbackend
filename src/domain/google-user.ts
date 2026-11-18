@@ -9,7 +9,7 @@ export function buildNewGoogleUser(claims: GoogleUserClaims) {
   return {
     email: claims.email,
     name: claims.name?.trim() || localPart,
-    role: "OPERATOR" as const,
+    role: "ADVISOR" as const,
     active: true,
     googleSubject: claims.subject,
   };

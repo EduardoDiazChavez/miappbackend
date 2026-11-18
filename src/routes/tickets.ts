@@ -9,7 +9,7 @@ import { GoogleSheetWorkbook } from "../models/GoogleSheetWorkbook.js";
 import { TicketSheetSync } from "../models/TicketSheetSync.js";
 import { Organization } from "../models/Organization.js";
 import { User } from "../models/User.js";
-import { internalRoles } from "../domain/roles.js";
+import { adminRoles, internalRoles } from "../domain/roles.js";
 import { parseTicketDateRange } from "../domain/ticket-date-filter.js";
 import {
   canAccessTicket,
@@ -142,7 +142,7 @@ ticketsRouter.get("/", async (request, response) => {
       return;
     }
     query.organizationId = user.organizationId;
-  } else if (user.role !== "ADMIN") {
+  } else if (!adminRoles.includes(user.role)) {
     query.createdBy = user.id;
     if (typeof request.query.organizationId === "string") {
       if (!mongoose.Types.ObjectId.isValid(request.query.organizationId)) {
@@ -154,7 +154,7 @@ ticketsRouter.get("/", async (request, response) => {
   }
 
   if (request.query.userId !== undefined) {
-    if (user.role !== "ADMIN" && user.role !== "CLIENT") {
+    if (!adminRoles.includes(user.role) && user.role !== "CLIENT") {
       response.status(403).json({ error: "No tienes permiso para filtrar tickets por usuario." });
       return;
     }
@@ -389,7 +389,7 @@ ticketsRouter.get("/filter-options", async (request, response) => {
       return;
     }
     query.organizationId = user.organizationId;
-  } else if (user.role !== "ADMIN") {
+  } else if (!adminRoles.includes(user.role)) {
     query.createdBy = user.id;
   }
 
