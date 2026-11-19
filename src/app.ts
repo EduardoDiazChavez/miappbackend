@@ -1,7 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import helmet from "helmet";
+import * as helmetModule from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { config } from "./config.js";
 import { errorHandler } from "./middleware/errors.js";
@@ -12,7 +12,7 @@ import { ticketsRouter } from "./routes/tickets.js";
 export const app = express();
 
 app.disable("x-powered-by");
-app.use(helmet());
+app.use(helmetModule.default());
 app.use(cors({ origin: config.FRONTEND_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
