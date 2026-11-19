@@ -34,7 +34,7 @@ paths:
   /auth/google:
     post:
       security: []
-      summary: Verify Google ID token for a previously authorized internal account
+      summary: Verify Google ID token for a verified @mrm.com.ve internal account
       responses:
         "200": { description: Internal session created }
         "403": { description: Account not authorized for internal access }
@@ -243,11 +243,6 @@ paths:
       summary: Create a one-time client invitation (ADMIN or SUPER_ADMIN)
       responses:
         "201": { description: Single-use invitation URL, expires after 72 hours }
-  /admin/users/internal:
-    post:
-      summary: Allowlist an advisor for Google sign-in (ADMIN or SUPER_ADMIN)
-      responses:
-        "201": { description: Internal account authorized }
 components:
   securitySchemes:
     sessionCookie:

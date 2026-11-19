@@ -34,27 +34,6 @@ const invitationSchema = z.object({
   email: z.string().trim().email().max(254),
   organizationId: z.string().refine(mongoose.Types.ObjectId.isValid),
 });
-const internalUserSchema = z.object({
-  name: z.string().trim().min(2).max(120),
-  email: z.string().trim().email().max(254),
-  role: z.literal("ADVISOR"),
-});
-
-adminRouter.post("/users/internal", async (request, response) => {
-  const input = internalUserSchema.parse(request.body);
-  const email = input.email.toLowerCase();
-  const existingUser = await User.findOne({ email });
-  if (existingUser) {
-    response.status(409).json({ error: "Ya existe una cuenta con ese correo." });
-    return;
-  }
-
-  const user = await User.create({ ...input, email, googleSubject: undefined });
-  response.status(201).json({
-    user: { id: String(user._id), name: user.name, email: user.email, role: user.role },
-  });
-});
-
 adminRouter.post("/organizations", async (request, response) => {
   const input = organizationSchema.parse(request.body);
   const existing = await Organization.findOne({

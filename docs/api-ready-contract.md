@@ -7,8 +7,8 @@ La API se ejecuta como proyecto Node.js independiente en `backend/`. Todas las r
 | Rol API | Flujo | Permisos principales |
 | --- | --- | --- |
 | `CLIENT` | Contraseña definida al aceptar una invitación | Listar y consultar tickets de su organización; enviar mensajes visibles al cliente. No crea ni cierra tickets. |
-| `ADVISOR` | Google, cuenta autorizada por administración | Consultar sus tickets, crear tickets, responder y cambiar estados. |
-| `ADMIN` | Google, cuenta autorizada | Conserva las funciones administrativas actuales y puede gestionar organizaciones, invitaciones y cuentas internas. |
+| `ADVISOR` | Google, correo verificado `@mrm.com.ve` | Consultar sus tickets, crear tickets, responder y cambiar estados. |
+| `ADMIN` | Google, cuenta autorizada | Conserva las funciones administrativas actuales y puede gestionar organizaciones e invitaciones. |
 | `SUPER_ADMIN` | Google, cuenta bootstrap | Incluye todos los permisos de Admin; queda reservado para funciones adicionales de métricas. |
 
 Cada solicitud autenticada vuelve a consultar el usuario activo en MongoDB, de modo que rol y organización revocados no dependan del tiempo de vida del JWT. Los clientes se filtran por `organizationId` en la API. Un ticket que no pertenece a la organización responde como no encontrado.
@@ -44,7 +44,6 @@ Cada solicitud autenticada vuelve a consultar el usuario activo en MongoDB, de m
 - `PUT /admin/sheets/workbooks/:workbookId/mappings` — actualizar la relación de empresas con pestañas existentes.
 - `POST /admin/sheets/workbooks/:workbookId/activate` — activar un archivo histórico configurado y cerrar el activo anterior del usuario.
 - `POST /admin/invitations/clients` — `{ "name": "...", "email": "...", "organizationId": "..." }`. Devuelve una URL de invitación de un solo uso; el token original no se persiste.
-- `POST /admin/users/internal` — `{ "name": "...", "email": "...", "role": "ADVISOR" }`.
 
 Todas las rutas `/admin` requieren `ADMIN` o `SUPER_ADMIN`. La cuenta `BOOTSTRAP_ADMIN_EMAIL` se crea o promueve a `SUPER_ADMIN` mediante `npm.cmd run bootstrap:admin`; las demás cuentas Admin conservan su rol. `POST /tickets` y el cambio de estado exigen rol interno. Los payloads se validan con Zod, hay límites de tamaño y tasa, CORS limitado a `FRONTEND_ORIGIN`, cookies seguras y protección por validación de `Origin` en operaciones mutables.
 

@@ -77,7 +77,7 @@ La aplicación tiene dos experiencias funcionales:
 | --- | --- |
 | Cliente | Portal `/cliente`: consulta únicamente tickets asociados a su empresa, ve su historial y puede responder en la conversación del ticket. |
 | Asesor | Panel `/dashboard`: consulta sus tickets, crea tickets y agrega actualizaciones al historial. |
-| Admin | Conserva las funciones administrativas actuales, incluida la gestión de organizaciones y cuentas internas. |
+| Admin | Conserva las funciones administrativas actuales, incluida la gestión de organizaciones e invitaciones de clientes. |
 | Super admin | Tiene los permisos de Admin y queda reservado para funciones adicionales de métricas. |
 
 El rol se define en `src/features/auth/types.ts`; el estado de sesión viene de la API mediante cookie `HttpOnly`. Los componentes de sesión y guards están agrupados en `src/features/auth/`; el portal del cliente vive en `src/features/clients/`, y el detalle/conversación del ticket está en `src/features/tickets/`.
